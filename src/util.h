@@ -18,14 +18,9 @@ inline void error_exit(const char* msg) {
     exit(2); // Return with error code
 }
 
-//** AD: This is what I was talking about with giving the compiler hints about the path the a conditional will take.
-// Usage: if (likely(rarely failing checks) ) { ... } else { .. error routine ... }
-#define LIKELY(x) __builtin_expect(!!(x), 1)
-#define UNLIKELY(x) __builtin_expect(!!(x), 0)
-
 // Checks that are always on:
 #define ASSERT(expr, msg) \
-    if (LIKELY(!(expr))) { \
+    if (!(expr)) { \
         printf("FAILED CHECK: %s (%s:%d)\n", msg, __FILE__, __LINE__); \
         throw msg; \
     }
@@ -42,6 +37,15 @@ inline bool within_range(T val, T a, T b) {
 	// Is val within [a,b) ?
 	return val >= a && val < b;
 }
+
+#ifdef __GNUC__
+// Only support prefetch for GCC
+#define SPARSE_READ_PREFETCH(x) __builtin_prefetch(x, 0, 0)
+#define SPARSE_WRITE_PREFETCH(x) __builtin_prefetch(x, 1, 0)
+#else
+#define SPARSE_READ_PREFETCH(x)
+#define SPARSE_WRITE_PREFETCH(x)
+#endif
 
 inline std::vector<double> parse_numlist(std::string s) {
 	std::vector<double> ret;
@@ -63,5 +67,7 @@ inline double parse_num(std::string s) {
 
 #define LOG(msg, ...) \
     printf(msg, ...);
+
+typedef std::vector<double> NumVec;
 
 #endif

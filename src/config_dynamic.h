@@ -32,13 +32,13 @@ struct ParsedConfig {
 
     // 'X_category' config options
 
-    // Thresholds are filled, entity lists empty
-    CategoryGrouper tweet_ranks, follow_ranks;
-    CategoryGrouper retweet_ranks;
-
-    // 'entities' config options
-    // Note: Weights are filled, entity lists empty
-    EntityTypeVector entity_types;
+//    // Thresholds are filled, entity lists empty
+//    CategoryGrouper tweet_ranks, follow_ranks;
+//    CategoryGrouper retweet_ranks;
+//
+//    // 'entities' config options
+//    // Note: Weights are filled, entity lists empty
+//    EntityTypeVector entity_types;
 
     /* Most config values are optional -- place defaults here. */
     ParsedConfig() {
