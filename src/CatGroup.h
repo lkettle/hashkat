@@ -3,6 +3,9 @@
 
 #include <vector>
 
+#include "lcommon/strformat.h"
+#include "MemPoolVector.h"
+
 #include "util.h"
 
 // Each category is defined with respect to a series of bounds
@@ -12,65 +15,141 @@
 
 struct CatIndex {
 	int category, index;
-	CatIndex(int g = -1, int i = -1) {
-		category = g, index = i;
+	CatIndex(int c = -1, int i = -1) {
+		category = c, index = i;
 	}
 };
 
 // Only used as return result, for convenience
 template <typename T>
 struct CatList {
-    CatList(T* data, int size) {
-        this->data = data;
-        this->size = size;
+    CatList(T* data, int size) :
+            data(data), size(size) {
     }
 
-    T* data;
-    int size;
+    T back() {
+        return (*this)[0];
+    }
+    T front() {
+         return (*this)[size - 1];
+    }
+    bool empty() {
+        return size == 0;
+    }
+    T& operator[](int index) {
+         ASSERT(size > index, "CatList::operator[](): size <= index");
+         return data[index];
+    }
+
+    T* const data;
+    const int size;
 };
 
 // Based on a roughly fixed allocation of memory for all categories,
 // and a simple shifting insert that does not guarantee any list order.
-template <typename T, int INIT_CATS = 8>
+template <typename T, typename IndexerT, int INIT_CATS = 8>
+// IndexerT:
+//  A generic structure
+//      - turns T into a CatIndex with lookup()
+//      - stores CatIndex associated with T with store()
+// INIT_CATS:
+//  More means more static memory per every category, but potentially less dynamic allocations.
+//  Adjust depending on the average amount of categories your CatGroups have.
 struct CatGroup {
-    CatGroup(T* d, int cap) {
+    CatGroup(T* d, const IndexerT& indexer, int cap) : indexer(indexer) {
         data = d;
         capacity = cap;
     }
     size_t size() const {
         return cats.size;
     }
-    CatList<T> get(size_t index) {
-        ASSERT(index < cats.size, "Bounds error");
-        int min = 0, max = cats[index];
+
+    void print_cats() {
+        for (int i = 0; i < cats.size; i++) {
+            printf("Cat %d: %d\n", i, cats[i].bound);
+        }
+        int last_bound = cats.back().bound;
+        printf("Content: [");
+        for (int i = 0 ; i < last_bound; i++) {
+            printf("%d ", data[i]);
+        }
+        printf("]\n");
+    }
+    CatList<T> get_list(size_t index) {
+        DEBUG_CHECK(index < cats.size, "CatGroup out-of-bounds access");
+        int min = 0, max = cats[index].bound;
         if (index > 0) {
-            min = cats[index];
+            min = cats[index-1].bound;
         }
         return CatList<T>(data + min, max - min);
     }
+    void add(MemPool& mem_pool, const T& element, int category) {
+        ensure_exists(mem_pool, category);
+        printf("add elem=%d cat=%d\n", element, category);
+        print_cats();
+        // Create newly freed space in categories after this one:
+        for (int c = category + 1; c < cats.size; c++) {
+            CatList<T> list = get_list(c);
+            // Move front element to after the back end
+            if (!list.empty()) {
+                list[list.size] = list.front();
+            }
+        }
+        // Adjust end-bounds of the categories
+        for (int c = category; c < cats.size; c++) {
+            cats[c].bound++;
+        }
 
-    void add(const T& element, CatIndex cat_index) {
-        ASSERT(cats[size()-1] < capacity, "Capacity logic error");
-        for (int c = size() - 1; c <= capacity; c++) {
-            CatList<T> list = get(c);
-            // Shift back element to end
-            list[list.size] = ;
-            list.data++;
-            list[list.size - 1] =
+        // Use newly freed space
+        CatList<T> list = get_list(category);
+        int new_location = list.size - 1;
+        printf("newloc =%d\n", new_location);
+        list[new_location] = element;
+        printf("post_add\n");
+        print_cats();
+    }
+    T remove(CatIndex ci) {
+        print_cats();
+
+        CatList<T> list = get_list(ci.category);
+        DEBUG_CHECK(!list.empty(), "List should not be empty!");
+        T deleted = list[ci.index];
+        // Overwrite deleted slot with end element
+        list[ci.index] = list.back();
+        // Use newly freed space for categories after this one:
+        for (int c = ci.category + 1; c < cats.size; c++) {
+            CatList<T> list = get_list(c);
+            // Move back element to before the front element
+            if (!list.empty()) {
+                list[-1] = list.back();
+            }
+        }
+        // Adjust end-bounds of the categories
+        for (int c = ci.category; c < cats.size; c++) {
+            cats[c].bound--;
+        }
+        return deleted;
+    }
+private:
+    void ensure_exists(MemPool& mem_pool, int category) {
+        while (cats.size <= category) {
+            int prev = cats.size > 0 ? cats.back().bound : 0;
+            if (!mem_pool.add_if_possible(cats, CatInfo(prev))) {
+                error_exit("Cat group memory exhausted -- unexpected; fatal error.");
+            }
         }
     }
-    T remove(CatIndex cat_index) {
-
-    }
     T* data;
-    T* capacity;
+    int capacity;
+    IndexerT indexer;
     struct CatInfo {
         int bound;
+        CatInfo(int b = 0) { bound = b; }
     };
     MemPoolVector<CatInfo, INIT_CATS> cats;
 };
 
-template <typename T, int IA = 8>
+template <typename T, int IA>
 CatIndex categorize(CatGroup<T, IA>& group, const NumVec& thresh, CatIndex cat_index, double x) {
     ASSERT(thresh.size() >= 1, "Logic error");
     int c = cat_index.category;
@@ -90,69 +169,5 @@ CatIndex categorize(CatGroup<T, IA>& group, const NumVec& thresh, CatIndex cat_i
     group.add(cat_index);
     return new_index;
 }
-
-//struct CategoryEntityList {
-//	// Upper bound that fits into this category
-//	double threshold, /*Optional*/ prob;
-//	std::vector<int> entities;
-//	CategoryEntityList(double t, double p = 0) {
-//		threshold = t, prob = p;
-//	}
-//	size_t size() const {
-//	    return entities.size();
-//	}
-//	int operator[](size_t idx) const {
-//	    return entities[idx];
-//	}
-//};
-//
-//template <typename T>
-//struct CategoryGrouper {
-//	std::vector<Cat> categorizations;
-//	std::vector<CategoryEntityList> categories;
-//	CategoryGrouper() {
-//
-//	}
-//	// Incrementally update a categorization
-//	void categorize(int entity, double parameter) {
-//		if (categorizations.size() <= entity) {
-//			// Make sure 'entity' is a valid index
-//			categorizations.resize(entity + 1);
-//		}
-//		Cat& c = categorizations.at(entity);
-//		for (int i = 0; i < categories.size(); i++) {
-//			CategoryEntityList& C = categories[i];
-//			if (parameter <= C.threshold) {
-//				if (i != c.category) {
-//					// We have to move ourselves into the new list
-//					remove(c);
-//					c = add(entity, i);
-//				}
-//				return; // Categorized, done.
-//			}
-//		}
-//		DEBUG_CHECK(false, "Logic error");
-//	}
-//
-//	void remove(Cat& c) {
-//		if (c.category != -1) {
-//			CategoryEntityList& C = categories.at(c.category);
-//			DEBUG_CHECK(within_range(c.index, 0, (int)C.entities.size()), "Logic error");
-//			// Move the element at the top to our index:
-//			Cat& c_top = categorizations[C.entities.back()];
-//			c_top.index = c.index;
-//			C.entities[c.index] = C.entities.back();
-//			C.entities.pop_back();
-//			// Reset:
-//			c = Cat();
-//		}
-//	}
-//
-//	Cat add(int entity, int new_cat) {
-//		CategoryEntityList& C = categories.at(new_cat);
-//		C.entities.push_back(entity);
-//		return Cat(new_cat, C.entities.size() - 1);
-//	}
-//};
 
 #endif

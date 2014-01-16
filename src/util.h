@@ -10,6 +10,8 @@
 #include <sstream>
 #include <limits>
 
+#include <string>
+
 // Mixed bag of useful functions
 
 // Dirt simple error handling, exits the program:
@@ -21,7 +23,7 @@ inline void error_exit(const char* msg) {
 // Checks that are always on:
 #define ASSERT(expr, msg) \
     if (!(expr)) { \
-        printf("FAILED CHECK: %s (%s:%d)\n", msg, __FILE__, __LINE__); \
+        printf("FAILED CHECK: %s (%s:%d)\n", /*Hack to take C++ strings too:*/ std::string(msg).c_str(), __FILE__, __LINE__); \
         throw msg; \
     }
 

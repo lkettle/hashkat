@@ -82,11 +82,9 @@ static void say(uv_work_t *req) {
     fprintf(stdout, "%s\n", req->data);
 }
 
-int uv_main(int argc, char** argv) {
-    ThreadContext context;
-    context.start();
+int test_main(int argc, char** argv);
 
-    context.queue(say, (void*)"Hello World!");
-
+int main(int argc, char** argv) {
+    test_main(argc, argv);
     return 0;
 }

@@ -1,15 +1,13 @@
-/* Defines a pooled-memory integer vector and its grower.
- * This class is necessary for implementing follow sets.
- *
- * Follow sets are lists of (hopefully, but in practice not always)
- * unique entities that a given entity is following.
+/* Defines a pooled-memory vector and its grower.
  *
  * We optimize for the case size <= MEMPOOL_THRESHOLD by placing the
  * elements directly in the array.
  *
- * For size > MEMPOOL_THRESHOLD, MemPoolVectorGrower provides a new follow
- * set to point to, when size == MEMPOOL_THRESHOLD, and grow() is used.
+ * For size > MEMPOOL_THRESHOLD, 'MemPool' provides a new buffer
+ * to point to, when size == MEMPOOL_THRESHOLD, and grow() is used.
  *
+ * This is class is especially intended for small objects that only
+ * grow in exceptional circumstances.
  */
 
 #ifndef MEMPOOLVECTOR_H_
@@ -36,9 +34,6 @@ struct MemPoolVector {
         for (int i = 0; i < len; i++) {
         	location[i] = source[i];
         }
-        for (int i = len; i < capacity; i++){
-            location[i] = -1; // Fill rest with -1 to show no action in the array
-        }
     }
 
     void sort_and_remove_duplicates() {
@@ -47,9 +42,15 @@ struct MemPoolVector {
     	size = (new_end - location); // Where we start minus the new end
     }
 
-    int& operator[](int index) { //** This allows us to index our MemPoolVector struct as if it were an array.
+    V& operator[](int index) { //** This allows us to index our MemPoolVector struct as if it were an array.
     	DEBUG_CHECK(within_range(index, 0, size), "Operator out of bounds");
     	return location[index];
+    }
+    V& front() {
+        return (*this)[0];
+    }
+    V& back() {
+        return (*this)[size-1];
     }
 
     int size, capacity;
@@ -59,35 +60,35 @@ struct MemPoolVector {
     V buffer1[MEMPOOL_THRESHOLD]; // (Short-object-optimization)
 };
 
-struct DeletedMemPoolVector {
+struct DeletedMemPoolBlock {
 	// A buffer in our pool that overgrew its boundary, and can be used by another entity.
     void* location;
 	int capacity;
-	DeletedMemPoolVector(void* loc, int cap) {
+	DeletedMemPoolBlock(void* loc, int cap) {
 		location = loc, capacity = cap;
 	}
 };
 
 
 /* Handles growing follow sets, and allocating buffers when size > MEMPOOL_THRESHOLD. */
-struct MemPoolVectorGrower {
-    typedef std::vector< DeletedMemPoolVector > DeletedList;
+struct MemPool {
+    typedef std::vector< DeletedMemPoolBlock > DeletedList;
 
 	void* memory;
 	int used, capacity;
 	DeletedList deletions;
 
-	MemPoolVectorGrower() {
+	MemPool() {
 		memory = NULL;
 		used = 0, capacity = 0;
 	}
-    void preallocate(int max_bytes) {
+    void allocate(int max_bytes) {
         capacity = max_bytes;
         memory = (char*)malloc(capacity);
         printf("%d bytes in preallocate\n", max_bytes);
         ASSERT(memory != NULL, "MemPoolVectorGrower::preallocate failed")
     }
-	~MemPoolVectorGrower() {
+	~MemPool() {
 		free(memory);
 	}
 
@@ -95,7 +96,7 @@ struct MemPoolVectorGrower {
 	// If we had to grow AND we have run out of allocated memory, we do nothing and return false.
 	// Otherwise, we return true.
     template <typename V, int MEMPOOL_THRESHOLD>
-	bool add_if_possible(MemPoolVector<V, MEMPOOL_THRESHOLD>& f, int element) {
+	bool add_if_possible(MemPoolVector<V, MEMPOOL_THRESHOLD>& f, const V& element) {
     	DEBUG_CHECK(f.size <= f.capacity, "Logic error, array should have been grown!");
 		if (f.size == f.capacity) {
 			if (!grow_follow_set(f)) {
@@ -140,7 +141,7 @@ private:
 		if (f.location != f.buffer1) {
 			// If we are not pointing to our embedded 'buffer1', we must be pointing within the 'memory' array
 			DEBUG_CHECK(within_range((char*)f.location, (char*)memory, (char*)memory + capacity), "Logic error");
-			deletions.push_back(DeletedMemPoolVector(f.location, f.capacity));
+			deletions.push_back(DeletedMemPoolBlock(f.location, f.capacity));
 		}
 		V* old_loc = f.location;
 		f.location = new_location;

@@ -8,7 +8,7 @@ static const int FIRST_ALLOC = 2 * MEMPOOL_THRESHOLD;
 
 SUITE(MemPoolVectors) {
     typedef MemPoolVector<int, MEMPOOL_THRESHOLD> MPVec;
-    typedef MemPoolVectorGrower MPVecGrower;
+    typedef MemPool MPVecGrower;
 
 	static void check_content(MPVec& f) {
 		for (int i = 0; i < f.size; i++) {
@@ -17,7 +17,7 @@ SUITE(MemPoolVectors) {
 	}
 	TEST(growth) {
 	    MPVecGrower grower;
-		grower.preallocate(1024 /* bytes*/);
+		grower.allocate(1024 /* bytes*/);
 
 		MPVec f;
 
@@ -36,7 +36,7 @@ SUITE(MemPoolVectors) {
 
 	TEST(memory_exhaustion) {
 	    MPVecGrower grower;
-		grower.preallocate(FIRST_ALLOC * sizeof(int) /* bytes*/);
+		grower.allocate(FIRST_ALLOC * sizeof(int) /* bytes*/);
 
 		MPVec f;
 

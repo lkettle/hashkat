@@ -6,7 +6,6 @@
 #include <string>
 #include <limits>
 
-#include "CategoryGrouper.h"
 #include "util.h"
 
 /**

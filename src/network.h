@@ -11,7 +11,7 @@ struct Entity {
 
 struct NetworkStorage {
     Entity* entities;
-    MemPoolVectorGrower mem_pool;
+    MemPool mem_pool;
 };
 
 struct NetworkSegmentCats {
