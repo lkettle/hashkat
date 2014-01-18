@@ -12,11 +12,11 @@ using namespace std;
 // independently test the CatGroup
 struct SimpleIndexer {
     CatIndex lookup(int element) {
-        printf("Return %d in %d:%d\n", element, elements[element].category, elements[element].index);
+//        printf("Return %d in %d:%d\n", element, elements[element].category, elements[element].index);
         return elements[element];
     }
     void store(int element, CatIndex index) {
-        printf("Storing %d in %d:%d\n", element, index.category, index.index);
+//        printf("Storing %d in %d:%d\n", element, index.category, index.index);
         elements[element] = index;
     }
     map<int, CatIndex> elements;
@@ -32,16 +32,16 @@ SUITE(CatGroup) {
 
         std::vector<int> contents;
         for (int i = 1; i < 100; i++) {
-            printf("ADDING %d\n", i);
+//            printf("ADDING %d\n", i);
             group.add(mem_pool, i, i % 10);
         }
 
         for (int i = 1; i < 100; i++) {
-            printf("REMOVING %d\n", i);
+//            printf("REMOVING %d\n", i);
             group.remove(i);
         }
         CHECK(group.n_elems() == 0);
-        group.print_cats();
+//        group.print_cats();
 
         delete[] data;
     }

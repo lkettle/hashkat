@@ -64,8 +64,7 @@ struct CatGroup {
     }
     void add(MemPool& mem_pool, const T& element, int category) {
         ensure_exists(mem_pool, category);
-        printf("add elem=%d cat=%d\n", element, category);
-        print_cats();
+
         // Create newly freed space in categories after this one:
         for (int c = cats.size - 1; c >= category + 1; c--) {
             Range r = cat_range(c);
@@ -80,13 +79,10 @@ struct CatGroup {
         }
 
         set(CatIndex(category, bound(category) - 1), element);
-        printf("post_add\n");
-        print_cats();
     }
     void remove(const T& element) {
         CatIndex ci = lookup(element);
         DEBUG_CHECK(data[ci.index] == element, "Element removed must match stored index!");
-        print_cats();
 
         // Overwrite deleted slot with end element
         move(ci.category, bound(ci.category) - 1, ci.index);
