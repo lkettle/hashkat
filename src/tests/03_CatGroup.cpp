@@ -4,6 +4,7 @@
 
 #include "dependencies/mtwist.h"
 
+#include "../BinSet.h"
 #include "../CatGroup.h"
 
 using namespace std;
@@ -21,6 +22,42 @@ struct SimpleIndexer {
     }
     map<int, CatIndex> elements;
 };
+
+SUITE(BinSet) {
+    struct Watcher {
+        BinIndex lookup(int elem) {
+            return elements[elem];
+        }
+        void on_set(BinIndex index, int elem) {
+            elements[elem] = index;
+        }
+        map<int, BinIndex> elements;
+    };
+    TEST(bins) {
+        MemPool mem_pool;
+        mem_pool.allocate(10000);
+        const int CAPACITY = 1000;
+        int* data = new int[CAPACITY];
+        Watcher watcher;
+        BinSet<int, Watcher&> group(data, watcher, CAPACITY);
+
+        std::vector<int> contents;
+        for (int i = 1; i < 100; i++) {
+//            printf("ADDING %d\n", i);
+            group.add(mem_pool, i, i % 10);
+        }
+
+        for (int i = 1; i < 100; i++) {
+//            printf("REMOVING %d\n", i)
+            BinIndex index = watcher.lookup(i);
+            group.remove(index);
+        }
+        CHECK(group.n_elems() == 0);
+//        group.print_cats();
+
+        delete[] data;
+    }
+}
 
 SUITE(CatGroup) {
     TEST(ints) {

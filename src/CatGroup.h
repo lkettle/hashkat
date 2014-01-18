@@ -54,19 +54,19 @@ struct CatGroup {
         capacity = cap;
     }
     size_t n_cats() {
-        return cats.size;
+        return bins.size;
     }
     size_t n_elems() {
-        if (cats.size == 0) {
+        if (bins.size == 0) {
             return 0;
         }
-        return cats.back().bound;
+        return bins.back().bound;
     }
     void add(MemPool& mem_pool, const T& element, int category) {
         ensure_exists(mem_pool, category);
 
         // Create newly freed space in categories after this one:
-        for (int c = cats.size - 1; c >= category + 1; c--) {
+        for (int c = bins.size - 1; c >= category + 1; c--) {
             Range r = cat_range(c);
             // Move front element to after the back end
             if (!r.empty()) {
@@ -74,8 +74,8 @@ struct CatGroup {
             }
         }
 
-        for (int c = category; c < cats.size; c++) {
-            cats[c].bound++;
+        for (int c = category; c < bins.size; c++) {
+            bins[c].bound++;
         }
 
         set(CatIndex(category, bound(category) - 1), element);
@@ -88,7 +88,7 @@ struct CatGroup {
         move(ci.category, bound(ci.category) - 1, ci.index);
 
         // Use newly freed space for categories after this one:
-        for (int c = ci.category + 1; c < cats.size; c++) {
+        for (int c = ci.category + 1; c < bins.size; c++) {
             Range r = cat_range(c);
             // Move back element to before the front element
             if (!r.empty()) {
@@ -96,15 +96,15 @@ struct CatGroup {
             }
         }
         // Adjust end-bounds of the categories
-        for (int c = ci.category; c < cats.size; c++) {
-            cats[c].bound--;
+        for (int c = ci.category; c < bins.size; c++) {
+            bins[c].bound--;
         }
     }
     void print_cats() {
-        for (int i = 0; i < cats.size; i++) {
-            printf("Cat %d: %d\n", i, cats[i].bound);
+        for (int i = 0; i < bins.size; i++) {
+            printf("Cat %d: %d\n", i, bins[i].bound);
         }
-        int last_bound = cats.back().bound;
+        int last_bound = bins.back().bound;
         printf("Content: [");
         for (int i = 0 ; i < last_bound; i++) {
             printf("%d ", data[i]);
@@ -114,10 +114,10 @@ struct CatGroup {
 private:
 
     Range cat_range(size_t index) {
-        DEBUG_CHECK(index < cats.size, "CatGroup out-of-bounds access");
-        int min = 0, max = cats[index].bound;
+        DEBUG_CHECK(index < bins.size, "CatGroup out-of-bounds access");
+        int min = 0, max = bins[index].bound;
         if (index > 0) {
-            min = cats[index-1].bound;
+            min = bins[index-1].bound;
         }
         return Range(min, max);
     }
@@ -131,7 +131,7 @@ private:
     }
 
     int bound(int index) {
-        return cats[index].bound;
+        return bins[index].bound;
     }
     void move(int cat, int start, int end) {
         printf("moving %d to %d\n", start, end);
@@ -139,9 +139,9 @@ private:
     }
 
     void ensure_exists(MemPool& mem_pool, int category) {
-        while (cats.size <= category) {
-            int prev = cats.size > 0 ? cats.back().bound : 0;
-            if (!mem_pool.add_if_possible(cats, CatInfo(prev))) {
+        while (bins.size <= category) {
+            int prev = bins.size > 0 ? bins.back().bound : 0;
+            if (!mem_pool.add_if_possible(bins, CatInfo(prev))) {
                 error_exit("Cat group memory exhausted -- unexpected; fatal error.");
             }
         }
@@ -153,7 +153,7 @@ private:
         int bound;
         CatInfo(int b = 0) { bound = b; }
     };
-    MemPoolVector<CatInfo, INIT_CATS> cats;
+    MemPoolVector<CatInfo, INIT_CATS> bins;
 };
 
 //template <typename T, int IA>
