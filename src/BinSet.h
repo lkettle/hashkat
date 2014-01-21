@@ -7,6 +7,7 @@
 #define BINSET_H_
 
 #include <vector>
+#include <map>
 
 #include "lcommon/strformat.h"
 #include "lcommon/Range.h"
@@ -24,16 +25,39 @@ struct BinPosition {
 
 template <typename T>
 struct NullController {
-    void on_set(BinPosition index, const T& element) {
+
+    template <typename Context>
+    void add_bin(Context& context, MemPool& mem_pool) {
+        // Do nothing
+    }
+
+    template <typename Context>
+    void on_set(Context& context, BinPosition index, const T& element) {
         // Do nothing
     }
 };
 
-template <typename T, typename ControllerT = NullController<T>, int INIT_BINS = 8>
-struct BinIndexer {
-    BinIndexer(ControllerT controller) : _controller(controller) {
+/* Used as part of BinSet. */
+template <typename T, typename ControllerT, int INIT_BINS = 8>
+struct BinIndexer2 {
+    BinIndexer2(ControllerT controller) : _controller(controller) {
     }
 
+    /* Main operations: */
+    template <typename Context>
+    void add_bin(Context& context) {
+        int prev = bounds.size > 0 ? bounds.back() : 0;
+        if (!context.get_mem_pool().add_if_possible(bounds, prev)) {
+            error_exit("Bin group memory exhausted -- unexpected; fatal error.");
+        }
+    }
+
+    template <typename Context>
+    void on_set(Context& context, BinPosition index, const T& element) {
+        _controller.on_set(index, element);
+    }
+
+    /* Supplementary operations: */
     Range index_range(int bin) {
         return index_range(Range(bin, bin));
     }
@@ -47,16 +71,6 @@ struct BinIndexer {
         return Range(min, max);
     }
 
-    void add_bin(MemPool& mem_pool) {
-        int prev = bounds.size > 0 ? bounds.back() : 0;
-        if (!mem_pool.add_if_possible(bounds, prev)) {
-            error_exit("Bin group memory exhausted -- unexpected; fatal error.");
-        }
-    }
-
-    void on_set(BinPosition index, const T& element) {
-        _controller.on_set(index, element);
-    }
 
     // Number of categories
     size_t n_bins() {
@@ -74,9 +88,100 @@ struct BinIndexer {
     ControllerT _controller;
 };
 
+template <typename BinInfo, int INIT_BINS = 8>
+struct BinBounds {
+    BinBounds() {
+    }
+
+    /* Main operations: */
+    template <typename Context>
+    void add_bin(Context& context) {
+        int prev = bounds.size > 0 ? bounds.back().bound : 0;
+        if (!context.get_mem_pool().add_if_possible(bounds, prev)) {
+            error_exit("Bin group memory exhausted -- unexpected; fatal error.");
+        }
+    }
+
+    /* Supplementary operations: */
+    Range index_range(int bin) {
+        return index_range(Range(bin, bin));
+    }
+
+    Range index_range(Range bins) {
+        DEBUG_CHECK(bins.max < n_bins() && bins.min < n_bins(), "BinSet out-of-bounds access");
+        int min = 0, max = bounds[bins.max].bound;
+        if (bins.min > 0) {
+            min = bounds[bins.min-1].bound;
+        }
+        return Range(min, max);
+    }
+
+    // Number of categories
+    size_t n_bins() {
+        return bounds.size;
+    }
+
+    BinInfo& get(int bin) {
+        return bounds[bin];
+    }
+private:
+    MemPoolVector<BinInfo, INIT_BINS> bounds;
+};
+
+/* Used as part of BinSet. */
+template <typename T, typename IndexerT, typename ChildT, int INIT_BINS = 8>
+struct RateIndexer {
+    RateIndexer(const IndexerT& indexer, const ChildT& child) :
+            indexer(indexer), child(child) {
+    }
+
+    template <typename Context>
+    double add(Context& context, const T& element, int bin) {
+        int sub = sub_bin(element, bin);
+        double rate_diff = child.add(context, element, sub);
+
+        RateInfo& info = bounds.get(sub);
+        info.rate += rate_diff;
+
+        return rate_diff;
+    }
+
+    template <typename Context>
+    double remove(Context& context, const T& element, int bin) {
+        int sub = sub_bin(element, bin);
+        double rate_diff = child.remove(context, element, sub);
+
+        RateInfo& info = bounds.get(sub);
+        info.rate -= rate_diff;
+
+        return rate_diff;
+    }
+private:
+    int sub_bin(const T& element, int bin) {
+        return indexer.get_slot(bounds.index_range(bin), element);
+    }
+    struct RateInfo {
+        int rate;
+        int bound;
+    };
+    BinBounds<RateInfo, INIT_BINS> bounds;
+    IndexerT indexer;
+    ChildT child;
+
+};
+
+struct HashLayer {
+//    template <typename Context>
+//    void lookup(Context& context, const T& element, int bin) {
+//
+//    }
+};
+
 // Based on a roughly fixed allocation of memory for all categories,
 // and a simple shifting insert that does not guarantee any list order.
-template <typename T, typename ControllerT = NullController<T>, int INIT_BINS = 8 >
+template <typename T, typename IndexerT, int INIT_BINS = 8 >
+// Context:
+//  Eg, the network segment
 // ControllerT:
 //  A generic structure that observes all element shifting, allowing for 'plugging in' logic
 //  that would otherwise require a rewrite.
@@ -84,7 +189,7 @@ template <typename T, typename ControllerT = NullController<T>, int INIT_BINS = 
 //  More means more static memory per every BinSet, but potentially less dynamic allocations.
 //  Adjust depending on the average amount of categories your BinSets have.
 struct BinSet {
-    BinSet(T* d, ControllerT controller, int cap) : indexer(controller) {
+    BinSet(T* d, IndexerT indexer, int cap) : indexer(indexer) {
         data = d;
         capacity = cap;
     }
@@ -93,15 +198,16 @@ struct BinSet {
         return indexer.bound(indexer.n_bins()-1);
     }
 
-    void add(MemPool& mem_pool, const T& element, int bin) {
-        ensure_exists(mem_pool, bin);
+    template <typename Context>
+    void add(Context& context, const T& element, int bin) {
+        ensure_exists(context, bin);
 
         // Create newly freed space in bins after this one:
         for (int c = indexer.n_bins() - 1; c >= bin + 1; c--) {
             Range r = indexer.index_range(c);
             // Move front element to after the back end
             if (!r.empty()) {
-                move(c, r.min, r.max);
+                move(context, c, r.min, r.max);
             }
         }
 
@@ -109,18 +215,20 @@ struct BinSet {
             indexer.bound(c)++;
         }
 
-        set(BinPosition(bin, indexer.bound(bin) - 1), element);
+        set(context, BinPosition(bin, indexer.bound(bin) - 1), element);
     }
-    void remove(BinPosition ci) {
+
+    template <typename Context>
+    void remove(Context& context, BinPosition ci) {
         // Overwrite deleted slot with end element
-        move(ci.bin, indexer.bound(ci.bin) - 1, ci.index);
+        move(context, ci.bin, indexer.bound(ci.bin) - 1, ci.index);
 
         // Use newly freed space for bin after this one:
         for (int c = ci.bin + 1; c < indexer.n_bins(); c++) {
             Range r = indexer.index_range(c);
             // Move back element to before the front element
             if (!r.empty()) {
-                move(c, r.max - 1, r.min - 1);
+                move(context, c, r.max - 1, r.min - 1);
             }
         }
         // Adjust end-bounds of the bins
@@ -140,30 +248,34 @@ struct BinSet {
 //        printf("]\n");
     }
 
-    ControllerT& get_controller() {
-        return indexer.get_controller();
+    IndexerT& get_indexer() {
+        return indexer;
     }
 
 private:
-    void set(BinPosition index, const T& element) {
+
+    template <typename Context>
+    void set(Context& context, BinPosition index, const T& element) {
         data[index.index] = element;
-        indexer.on_set(index, element);
+        indexer.on_set(context, index, element);
     }
 
-    void move(int bin, int start, int end) {
+    template <typename Context>
+    void move(Context& context, int bin, int start, int end) {
         printf("moving %d to %d\n", start, end);
-        set(BinPosition(bin, end), data[start]);
+        set(context, BinPosition(bin, end), data[start]);
     }
 
-    void ensure_exists(MemPool& mem_pool, int bin) {
+    template <typename Context>
+    void ensure_exists(Context& context, int bin) {
         while (indexer.n_bins() <= bin) {
-            indexer.add_bin(mem_pool);
+            indexer.add_bin(context.mem_pool());
         }
     }
     T* data;
     int capacity;
 
-    BinIndexer<T, ControllerT, INIT_BINS> indexer;
+    IndexerT indexer;
 };
 
 #endif
