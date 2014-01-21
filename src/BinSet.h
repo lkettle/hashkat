@@ -90,9 +90,6 @@ struct BinIndexer2 {
 
 template <typename BinInfo, int INIT_BINS = 8>
 struct BinBounds {
-    BinBounds() {
-    }
-
     /* Main operations: */
     template <typename Context>
     void add_bin(Context& context) {
@@ -128,10 +125,30 @@ private:
     MemPoolVector<BinInfo, INIT_BINS> bounds;
 };
 
+template <typename T, typename IndexerT, int INIT_BINS = 8>
+struct AbstractLayer {
+    int sub_bin(const T& element, int bin) {
+        return indexer.get_slot(bounds.index_range(bin), element);
+    }
+
+protected:
+    BinBounds<RateInfo, INIT_BINS> bounds;
+    IndexerT indexer;
+};
+
+struct Bound {
+    int bound;
+};
+
+struct RateInfo {
+    int rate;
+    int bound;
+};
+
 /* Used as part of BinSet. */
 template <typename T, typename IndexerT, typename ChildT, int INIT_BINS = 8>
-struct RateIndexer {
-    RateIndexer(const IndexerT& indexer, const ChildT& child) :
+struct CatLayer : AbstractLayer<T, IndexerT, INIT_BINS> {
+    CatLayer(const IndexerT& indexer, const ChildT& child) :
             indexer(indexer), child(child) {
     }
 
@@ -156,18 +173,13 @@ struct RateIndexer {
 
         return rate_diff;
     }
-private:
+
     int sub_bin(const T& element, int bin) {
         return indexer.get_slot(bounds.index_range(bin), element);
     }
-    struct RateInfo {
-        int rate;
-        int bound;
-    };
-    BinBounds<RateInfo, INIT_BINS> bounds;
-    IndexerT indexer;
-    ChildT child;
 
+private:
+    ChildT child;
 };
 
 struct HashLayer {
@@ -180,16 +192,8 @@ struct HashLayer {
 // Based on a roughly fixed allocation of memory for all categories,
 // and a simple shifting insert that does not guarantee any list order.
 template <typename T, typename IndexerT, int INIT_BINS = 8 >
-// Context:
-//  Eg, the network segment
-// ControllerT:
-//  A generic structure that observes all element shifting, allowing for 'plugging in' logic
-//  that would otherwise require a rewrite.
-// INIT_BINS:
-//  More means more static memory per every BinSet, but potentially less dynamic allocations.
-//  Adjust depending on the average amount of categories your BinSets have.
-struct BinSet {
-    BinSet(T* d, IndexerT indexer, int cap) : indexer(indexer) {
+struct StoreLayer : AbstractLayer<T, IndexerT, INIT_BINS> {
+    StoreLayer(T* d, IndexerT indexer, int cap) : indexer(indexer) {
         data = d;
         capacity = cap;
     }
@@ -198,8 +202,10 @@ struct BinSet {
         return indexer.bound(indexer.n_bins()-1);
     }
 
+    // TODO: Test class as is
+    // TODO: Test class with frontend for incremental rates
     template <typename Context>
-    void add(Context& context, const T& element, int bin) {
+    typename IndexerT::Ret add(Context& context, const T& element, int bin) {
         ensure_exists(context, bin);
 
         // Create newly freed space in bins after this one:
@@ -219,7 +225,8 @@ struct BinSet {
     }
 
     template <typename Context>
-    void remove(Context& context, BinPosition ci) {
+    typename IndexerT::Ret remove(Context& context, const T& element, int bin) {
+        BinPosition ci = get_position(element, bin);
         // Overwrite deleted slot with end element
         move(context, ci.bin, indexer.bound(ci.bin) - 1, ci.index);
 
@@ -248,11 +255,10 @@ struct BinSet {
 //        printf("]\n");
     }
 
-    IndexerT& get_indexer() {
-        return indexer;
-    }
-
 private:
+    BinPosition get_position(const T& element, int bin) {
+        return indexer.get_slot(bounds.index_range(bin), element);
+    }
 
     template <typename Context>
     void set(Context& context, BinPosition index, const T& element) {
@@ -266,16 +272,8 @@ private:
         set(context, BinPosition(bin, end), data[start]);
     }
 
-    template <typename Context>
-    void ensure_exists(Context& context, int bin) {
-        while (indexer.n_bins() <= bin) {
-            indexer.add_bin(context.mem_pool());
-        }
-    }
     T* data;
     int capacity;
-
-    IndexerT indexer;
 };
 
 #endif
