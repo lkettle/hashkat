@@ -9,6 +9,7 @@
 #include <vector>
 #include <map>
 
+#include <iostream>
 #include "lcommon/strformat.h"
 #include "lcommon/Range.h"
 #include "MemPoolVector.h"
@@ -98,25 +99,37 @@ struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
         data = d;
         capacity = cap;
     }
+
     template <typename Context>
-    BinPosition get_position(Context& context, const T& element, int bin) {
+    BinPosition get_position(Context& context, int bin, const T& element) {
         int index = this->indexer.lookup(context, bin, element);
         return BinPosition(bin, index);
     }
 
     template <typename Context>
-    double set(Context& context, BinPosition index, const T& element) {
+    void set(Context& context, BinPosition index, const T& element) {
         data[index.index] = element;
-        double delta = this->indexer.store(context, index, element);
-        this->get(index.bin).r_total += delta;
+        this->indexer.store(context, index, element);
+    }
+
+    template <typename Context>
+    double rate_add(Context& context, int bin, const T& element) {
+        double delta = indexer.rate(context, bin, element);
+        this->get(bin).r_total += delta;
         return delta;
     }
 
     template <typename Context>
-    double move(Context& context, int bin, int start, int end) {
-        printf("moving %d to %d\n", start, end);
-        double delta = set(context, BinPosition(bin, end), data[start]);
+    double rate_subtract(Context& context, int bin, const T& element) {
+        double delta = -indexer.rate(context, bin, element);
+        this->get(bin).r_total += delta;
         return delta;
+    }
+
+    template <typename Context>
+    void move(Context& context, int bin, int start, int end) {
+        printf("moving %d to %d\n", start, end);
+        set(context, BinPosition(bin, end), data[start]);
     }
 protected:
     IndexerT indexer;
@@ -136,7 +149,7 @@ struct StoreLayer : public StoreT {
     double add(Context& context, const T& element, int bin) {
         printf("** ADD:\n");
         print_bins();
-        double delta = 0.0;
+
         this->ensure_exists(context, bin);
 
         // Create newly freed space in bins after this one:
@@ -144,7 +157,7 @@ struct StoreLayer : public StoreT {
             Range r = this->index_range(c);
             // Move front element to after the back end
             if (!r.empty()) {
-                delta += this->move(context, c, r.min, r.max);
+                this->move(context, c, r.min, r.max);
             }
         }
 
@@ -152,7 +165,8 @@ struct StoreLayer : public StoreT {
             this->get(c).bound++;
         }
 
-        delta += this->set(context, BinPosition(bin, this->get(bin).bound - 1), element);
+        this->set(context, BinPosition(bin, this->get(bin).bound - 1), element);
+        double delta = this->rate_add(context, bin, element);
         r_total += delta;
 
         printf("**POST ADD:\n");
@@ -164,23 +178,24 @@ struct StoreLayer : public StoreT {
     double remove(Context& context, const T& element, int bin) {
         printf("** REMOVE:\n");
         print_bins();
-        BinPosition ci = this->get_position(context, element, bin);
-        double delta = 0.0;
+        BinPosition ci = this->get_position(context, bin, element);
+
         // Overwrite deleted slot with end element
-        delta += this->move(context, ci.bin, this->get(ci.bin).bound - 1, ci.index);
+        this->move(context, ci.bin, this->get(ci.bin).bound - 1, ci.index);
 
         // Use newly freed space for bin after this one:
         for (int c = ci.bin + 1; c < this->n_bins(); c++) {
             Range r = this->index_range(c);
             // Move back element to before the front element
             if (!r.empty()) {
-                delta += this->move(context, c, r.max - 1, r.min - 1);
+                this->move(context, c, r.max - 1, r.min - 1);
             }
         }
         // Adjust end-bounds of the bins
         for (int c = ci.bin; c < this->n_bins(); c++) {
             this->get(c).bound--;
         }
+        double delta = this->rate_subtract(context, bin, element);
         r_total += delta;
 
         printf("**POST REMOVE:\n");
@@ -192,7 +207,7 @@ struct StoreLayer : public StoreT {
             return;
         }
         for (int i = 0; i < this->bounds.size; i++) {
-            printf("Bin %d: %d\n", i, this->bounds[i].bound);
+            std::cout << "Bin " << i << ": " << this->bounds[i].bound << " r_total: " << this->bounds[i].r_total << std::endl;
         }
         int last_bound = this->bounds.back().bound;
         printf("Content: [");

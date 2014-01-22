@@ -38,9 +38,11 @@ SUITE(BinSet) {
         int lookup(MockContext& context, int bin, EntityID element) {
             return elements[element.slot_id];
         }
-        double store(MockContext& context, BinPosition index, EntityID element) {
+        double rate(MockContext& context, int bin, EntityID element) {
+            return bin;
+        }
+        void store(MockContext& context, BinPosition index, EntityID element) {
             elements[element.slot_id] = index.index;
-            return 0;
         }
         map<int, int> elements;
     };
@@ -54,15 +56,15 @@ SUITE(BinSet) {
         StoreLayer<EntityID, StoreT> bins;
         bins.init(SimpleIndexer(), data, CAPACITY);
 
-        for (int i = 1; i < 100; i++) {
+        for (int i = 1; i < 12; i++) {
             printf("ADDING %d\n", i);
             bins.add(context, EntityID(i), i % 10);
         }
 
-        for (int i = 1; i < 100; i++) {
-            printf("REMOVING %d\n", i);
-            bins.remove(context, EntityID(i), i % 10);
-        }
+//        for (int i = 1; i < 12; i++) {
+//            printf("REMOVING %d\n", i);
+//            bins.remove(context, EntityID(i), i % 10);
+//        }
         CHECK(bins.n_elems() == 0);
         //        group.print_cats();
 
