@@ -23,78 +23,14 @@ struct BinPosition {
 	}
 };
 
-template <typename T>
-struct NullController {
-
-    template <typename Context>
-    void add_bin(Context& context, MemPool& mem_pool) {
-        // Do nothing
-    }
-
-    template <typename Context>
-    void on_set(Context& context, BinPosition index, const T& element) {
-        // Do nothing
-    }
-};
-
-/* Used as part of BinSet. */
-template <typename T, typename ControllerT, int INIT_BINS = 8>
-struct BinIndexer2 {
-    BinIndexer2(ControllerT controller) : _controller(controller) {
-    }
-
+template <typename T, typename BinInfo, int INIT_BINS = 8>
+struct AbstractLayer {
     /* Main operations: */
     template <typename Context>
-    void add_bin(Context& context) {
-        int prev = bounds.size > 0 ? bounds.back() : 0;
-        if (!context.get_mem_pool().add_if_possible(bounds, prev)) {
-            error_exit("Bin group memory exhausted -- unexpected; fatal error.");
-        }
-    }
-
-    template <typename Context>
-    void on_set(Context& context, BinPosition index, const T& element) {
-        _controller.on_set(index, element);
-    }
-
-    /* Supplementary operations: */
-    Range index_range(int bin) {
-        return index_range(Range(bin, bin));
-    }
-
-    Range index_range(Range bins) {
-        DEBUG_CHECK(bins.max < n_bins() && bins.min < n_bins(), "BinSet out-of-bounds access");
-        int min = 0, max = bounds[bins.max];
-        if (bins.min > 0) {
-            min = bounds[bins.min-1];
-        }
-        return Range(min, max);
-    }
-
-
-    // Number of categories
-    size_t n_bins() {
-        return bounds.size;
-    }
-
-    ControllerT& get_controller() {
-        return _controller;
-    }
-    int& bound(int cat) {
-        return bounds[cat];
-    }
-
-    MemPoolVector<int, INIT_BINS> bounds;
-    ControllerT _controller;
-};
-
-template <typename BinInfo, int INIT_BINS = 8>
-struct BinBounds {
-    /* Main operations: */
-    template <typename Context>
-    void add_bin(Context& context) {
+    void add_bin(Context& context, BinInfo b = BinInfo()) {
         int prev = bounds.size > 0 ? bounds.back().bound : 0;
-        if (!context.get_mem_pool().add_if_possible(bounds, prev)) {
+        b.bound = prev;
+        if (!context.get_mem_pool().add_if_possible(bounds, b)) {
             error_exit("Bin group memory exhausted -- unexpected; fatal error.");
         }
     }
@@ -113,6 +49,11 @@ struct BinBounds {
         return Range(min, max);
     }
 
+    size_t n_elems() {
+        Range r = index_range(Range(0,bounds.size-1));
+        return (r.max - r.min);
+    }
+
     // Number of categories
     size_t n_bins() {
         return bounds.size;
@@ -121,159 +62,152 @@ struct BinBounds {
     BinInfo& get(int bin) {
         return bounds[bin];
     }
-private:
+
+    template <typename Context>
+    void ensure_exists(Context& context, int category) {
+        while (bounds.size <= category) {
+            int prev = bounds.size > 0 ? bounds.back().bound : 0;
+            if (!context.get_mem_pool().add_if_possible(bounds, BinInfo(prev))) {
+                error_exit("Cat group memory exhausted -- unexpected; fatal error.");
+            }
+        }
+    }
+public:
     MemPoolVector<BinInfo, INIT_BINS> bounds;
 };
 
-template <typename T, typename IndexerT, int INIT_BINS = 8>
-struct AbstractLayer {
-    int sub_bin(const T& element, int bin) {
-        return indexer.get_slot(bounds.index_range(bin), element);
-    }
-
-protected:
-    BinBounds<RateInfo, INIT_BINS> bounds;
-    IndexerT indexer;
-};
-
-struct Bound {
-    int bound;
-};
-
 struct RateInfo {
-    int rate;
     int bound;
+    int r_total;
+    RateInfo(int bound = -1, int r_total = 0) :
+            bound(bound), r_total(r_total) {
+    }
 };
 
-/* Used as part of BinSet. */
-template <typename T, typename IndexerT, typename ChildT, int INIT_BINS = 8>
-struct CatLayer : AbstractLayer<T, IndexerT, INIT_BINS> {
-    CatLayer(const IndexerT& indexer, const ChildT& child) :
-            indexer(indexer), child(child) {
+struct MockNetwork {
+    MemPool mem_pool;
+
+    MemPool& get_mem_pool() {
+        return mem_pool;
+    }
+};
+
+template <typename T, typename IndexerT, int INIT_BINS = 8>
+struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
+    void init(IndexerT indexer, T* d, int cap) {
+        data = d;
+        capacity = cap;
+    }
+    template <typename Context>
+    BinPosition get_position(Context& context, const T& element, int bin) {
+        int index = this->indexer.lookup(context, bin, element);
+        return BinPosition(bin, index);
     }
 
     template <typename Context>
-    double add(Context& context, const T& element, int bin) {
-        int sub = sub_bin(element, bin);
-        double rate_diff = child.add(context, element, sub);
-
-        RateInfo& info = bounds.get(sub);
-        info.rate += rate_diff;
-
-        return rate_diff;
+    double set(Context& context, BinPosition index, const T& element) {
+        data[index.index] = element;
+        double delta = this->indexer.store(context, index, element);
+        this->get(index.bin).r_total += delta;
+        return delta;
     }
 
     template <typename Context>
-    double remove(Context& context, const T& element, int bin) {
-        int sub = sub_bin(element, bin);
-        double rate_diff = child.remove(context, element, sub);
-
-        RateInfo& info = bounds.get(sub);
-        info.rate -= rate_diff;
-
-        return rate_diff;
+    double move(Context& context, int bin, int start, int end) {
+        printf("moving %d to %d\n", start, end);
+        double delta = set(context, BinPosition(bin, end), data[start]);
+        return delta;
     }
-
-    int sub_bin(const T& element, int bin) {
-        return indexer.get_slot(bounds.index_range(bin), element);
-    }
-
-private:
-    ChildT child;
-};
-
-struct HashLayer {
-//    template <typename Context>
-//    void lookup(Context& context, const T& element, int bin) {
-//
-//    }
+protected:
+    IndexerT indexer;
+    T* data;
+    int capacity;
 };
 
 // Based on a roughly fixed allocation of memory for all categories,
 // and a simple shifting insert that does not guarantee any list order.
-template <typename T, typename IndexerT, int INIT_BINS = 8 >
-struct StoreLayer : AbstractLayer<T, IndexerT, INIT_BINS> {
-    StoreLayer(T* d, IndexerT indexer, int cap) : indexer(indexer) {
-        data = d;
-        capacity = cap;
+template <typename T, typename StoreT, int INIT_BINS = 8 >
+struct StoreLayer : public StoreT {
+    StoreLayer() {
+        r_total = 0;
     }
 
-    size_t n_elems() {
-        return indexer.bound(indexer.n_bins()-1);
-    }
-
-    // TODO: Test class as is
-    // TODO: Test class with frontend for incremental rates
     template <typename Context>
-    typename IndexerT::Ret add(Context& context, const T& element, int bin) {
-        ensure_exists(context, bin);
+    double add(Context& context, const T& element, int bin) {
+        printf("** ADD:\n");
+        print_bins();
+        double delta = 0.0;
+        this->ensure_exists(context, bin);
 
         // Create newly freed space in bins after this one:
-        for (int c = indexer.n_bins() - 1; c >= bin + 1; c--) {
-            Range r = indexer.index_range(c);
+        for (int c = this->n_bins() - 1; c >= bin + 1; c--) {
+            Range r = this->index_range(c);
             // Move front element to after the back end
             if (!r.empty()) {
-                move(context, c, r.min, r.max);
+                delta += this->move(context, c, r.min, r.max);
             }
         }
 
-        for (int c = bin; c < indexer.n_bins(); c++) {
-            indexer.bound(c)++;
+        for (int c = bin; c < this->n_bins(); c++) {
+            this->get(c).bound++;
         }
 
-        set(context, BinPosition(bin, indexer.bound(bin) - 1), element);
+        delta += this->set(context, BinPosition(bin, this->get(bin).bound - 1), element);
+        r_total += delta;
+
+        printf("**POST ADD:\n");
+        print_bins();
+        return delta;
     }
 
     template <typename Context>
-    typename IndexerT::Ret remove(Context& context, const T& element, int bin) {
-        BinPosition ci = get_position(element, bin);
+    double remove(Context& context, const T& element, int bin) {
+        printf("** REMOVE:\n");
+        print_bins();
+        BinPosition ci = this->get_position(context, element, bin);
+        double delta = 0.0;
         // Overwrite deleted slot with end element
-        move(context, ci.bin, indexer.bound(ci.bin) - 1, ci.index);
+        delta += this->move(context, ci.bin, this->get(ci.bin).bound - 1, ci.index);
 
         // Use newly freed space for bin after this one:
-        for (int c = ci.bin + 1; c < indexer.n_bins(); c++) {
-            Range r = indexer.index_range(c);
+        for (int c = ci.bin + 1; c < this->n_bins(); c++) {
+            Range r = this->index_range(c);
             // Move back element to before the front element
             if (!r.empty()) {
-                move(context, c, r.max - 1, r.min - 1);
+                delta += this->move(context, c, r.max - 1, r.min - 1);
             }
         }
         // Adjust end-bounds of the bins
-        for (int c = ci.bin; c < indexer.n_bins(); c++) {
-            indexer.bound(c)--;
+        for (int c = ci.bin; c < this->n_bins(); c++) {
+            this->get(c).bound--;
         }
+        r_total += delta;
+
+        printf("**POST REMOVE:\n");
+        print_bins();
+        return delta;
     }
     void print_bins() {
-//        for (int i = 0; i < bins.size; i++) {
-//            printf("Bin %d: %d\n", i, bins[i].bound);
-//        }
-//        int last_bound = bins.back().bound;
-//        printf("Content: [");
-//        for (int i = 0 ; i < last_bound; i++) {
-//            printf("%d ", data[i]);
-//        }
-//        printf("]\n");
+        if (this->bounds.size == 0) {
+            return;
+        }
+        for (int i = 0; i < this->bounds.size; i++) {
+            printf("Bin %d: %d\n", i, this->bounds[i].bound);
+        }
+        int last_bound = this->bounds.back().bound;
+        printf("Content: [");
+        for (int i = 0 ; i < last_bound; i++) {
+            printf("%d ", this->data[i]);
+        }
+        printf("]\n");
+    }
+
+    double get_total_rate() {
+        return r_total;
     }
 
 private:
-    BinPosition get_position(const T& element, int bin) {
-        return indexer.get_slot(bounds.index_range(bin), element);
-    }
-
-    template <typename Context>
-    void set(Context& context, BinPosition index, const T& element) {
-        data[index.index] = element;
-        indexer.on_set(context, index, element);
-    }
-
-    template <typename Context>
-    void move(Context& context, int bin, int start, int end) {
-        printf("moving %d to %d\n", start, end);
-        set(context, BinPosition(bin, end), data[start]);
-    }
-
-    T* data;
-    int capacity;
+    double r_total;
 };
 
 #endif

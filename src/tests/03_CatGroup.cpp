@@ -25,16 +25,48 @@ struct SimpleIndexer {
 
 struct MockContext {
     MemPool pool;
+    MockContext () {
+        pool.allocate(10000);
+    }
+    MemPool& get_mem_pool() {
+        return pool;
+    }
 };
 
 SUITE(BinSet) {
-    TEST(correctness) {
-        MockContext context;
-        context.pool.allocate(10000);
-        struct HashIndexer {
+    struct SimpleIndexer {
+        int lookup(MockContext& context, int bin, EntityID element) {
+            return elements[element.slot_id];
+        }
+        double store(MockContext& context, BinPosition index, EntityID element) {
+            elements[element.slot_id] = index.index;
+            return 0;
+        }
+        map<int, int> elements;
+    };
 
-        };
-        BinSet<int, > bins;
+    TEST(correctness) {
+        typedef StoreData<EntityID, SimpleIndexer> StoreT;
+
+        MockContext context;
+        const int CAPACITY = 1000;
+        EntityID* data = new EntityID[CAPACITY];
+        StoreLayer<EntityID, StoreT> bins;
+        bins.init(SimpleIndexer(), data, CAPACITY);
+
+        for (int i = 1; i < 100; i++) {
+            printf("ADDING %d\n", i);
+            bins.add(context, EntityID(i), i % 10);
+        }
+
+        for (int i = 1; i < 100; i++) {
+            printf("REMOVING %d\n", i);
+            bins.remove(context, EntityID(i), i % 10);
+        }
+        CHECK(bins.n_elems() == 0);
+        //        group.print_cats();
+
+        delete[] data;
     }
 }
 
