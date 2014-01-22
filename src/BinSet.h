@@ -24,6 +24,15 @@ struct BinPosition {
 	}
 };
 
+template <typename T>
+struct BinList {
+    const T* data;
+    const int size;
+    BinList(T* data, int size) :
+            data(data), size(size) {
+    }
+};
+
 template <typename T, typename BinInfo, int INIT_BINS = 8>
 struct AbstractLayer {
     /* Main operations: */
@@ -80,16 +89,8 @@ public:
 struct RateInfo {
     int bound;
     int r_total;
-    RateInfo(int bound = -1, int r_total = 0) :
+    RateInfo(int bound = 0, int r_total = 0) :
             bound(bound), r_total(r_total) {
-    }
-};
-
-struct MockNetwork {
-    MemPool mem_pool;
-
-    MemPool& get_mem_pool() {
-        return mem_pool;
     }
 };
 
@@ -114,16 +115,30 @@ struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
 
     template <typename Context>
     double rate_add(Context& context, int bin, const T& element) {
-        double delta = indexer.rate(context, bin, element);
+        double delta = indexer.rate(context, bin);
         this->get(bin).r_total += delta;
         return delta;
     }
 
     template <typename Context>
     double rate_subtract(Context& context, int bin, const T& element) {
-        double delta = -indexer.rate(context, bin, element);
+        double delta = -indexer.rate(context, bin);
         this->get(bin).r_total += delta;
         return delta;
+    }
+
+    // Used for time-dependent rates:
+    template <typename Context>
+    void shift_cohorts(Context& context) {
+        printf("Shifting the categories\n");
+        this->add_bin(context);
+        for (int bin = this->n_bins() - 2; bin >= 0; bin--) {
+            Range range = this->index_range(bin);
+            int n_elems = (range.max - range.min);
+            this->get(bin + 1) = this->get(bin);
+            this->get(bin + 1).r_total = n_elems * indexer.rate(context, bin + 1);
+        }
+        this->get(0) = RateInfo();
     }
 
     template <typename Context>
@@ -131,6 +146,15 @@ struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
         printf("moving %d to %d\n", start, end);
         set(context, BinPosition(bin, end), data[start]);
     }
+    IndexerT& get_indexer() {
+        return indexer;
+    }
+
+    BinList<T> get_list(int bin) {
+        Range range = this->index_range(bin);
+        return BinList<T>(data + range.min, (range.max - range.min));
+    }
+
 protected:
     IndexerT indexer;
     T* data;

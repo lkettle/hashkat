@@ -9,152 +9,82 @@
 
 using namespace std;
 
-// Use an indexer we know is correct, so that we can
-// independently test the CatGroup
-struct SimpleIndexer {
-    CatIndex lookup(int element) {
-//        printf("Return %d in %d:%d\n", element, elements[element].category, elements[element].index);
-        return elements[element];
-    }
-    void store(int element, CatIndex index) {
-//        printf("Storing %d in %d:%d\n", element, index.category, index.index);
-        elements[element] = index;
-    }
-    map<int, CatIndex> elements;
-};
+SUITE(SimpleBinSet) {
+    struct SimpleContext {
+        MemPool pool;
+        SimpleContext () {
+            pool.allocate(10000);
+        }
+        MemPool& get_mem_pool() {
+            return pool;
+        }
+    };
+    static SimpleContext context;
 
-struct MockContext {
-    MemPool pool;
-    MockContext () {
-        pool.allocate(10000);
-    }
-    MemPool& get_mem_pool() {
-        return pool;
-    }
-};
-
-SUITE(BinSet) {
     struct SimpleIndexer {
-        int lookup(MockContext& context, int bin, EntityID element) {
+        int lookup(SimpleContext& context, int bin, EntityID element) {
             return elements[element.slot_id];
         }
-        double rate(MockContext& context, int bin, EntityID element) {
-            return bin;
+        double rate(SimpleContext& context, int bin) {
+            return bin; // Each rate is proportional to the bin
         }
-        void store(MockContext& context, BinPosition index, EntityID element) {
+        void store(SimpleContext& context, BinPosition index, EntityID element) {
             elements[element.slot_id] = index.index;
         }
         map<int, int> elements;
     };
+    typedef StoreData<EntityID, SimpleIndexer> StoreT;
 
-    TEST(correctness) {
-        typedef StoreData<EntityID, SimpleIndexer> StoreT;
-
-        MockContext context;
-        const int CAPACITY = 1000;
-        EntityID* data = new EntityID[CAPACITY];
+    TEST(add_remove) {
+        vector<EntityID> data(/*Capacity*/ 1000);
         StoreLayer<EntityID, StoreT> bins;
-        bins.init(SimpleIndexer(), data, CAPACITY);
+        bins.init(SimpleIndexer(), &data[0], data.size());
 
-        for (int i = 1; i < 12; i++) {
-            printf("ADDING %d\n", i);
+        for (int i = 1; i < 100; i++) {
             bins.add(context, EntityID(i), i % 10);
         }
 
-//        for (int i = 1; i < 12; i++) {
-//            printf("REMOVING %d\n", i);
-//            bins.remove(context, EntityID(i), i % 10);
-//        }
+        for (int i = 1; i < 100; i++) {
+            bins.remove(context, EntityID(i), i % 10);
+        }
         CHECK(bins.n_elems() == 0);
-        //        group.print_cats();
+    }
 
-        delete[] data;
+    TEST(rates_and_cohorts) {
+        const int INIT_BINS = 10;
+
+        vector<EntityID> data(/*Capacity*/ 1000);
+        StoreLayer<EntityID, StoreT> bins;
+        bins.init(SimpleIndexer(), &data[0], data.size());
+
+        /* Add two elements to every bin */
+        for (int i = 0; i < INIT_BINS * 2; i++) {
+            bins.add(context, EntityID(i), i % 10);
+        }
+
+        /* Ensure that the rates check out */
+        for (int i = 0; i < INIT_BINS; i++) {
+            CHECK(bins.get(i).r_total == i * 2);
+        }
+
+        CHECK(bins.n_bins() == INIT_BINS);
+        CHECK(bins.n_elems() == INIT_BINS * 2);
+
+        bins.shift_cohorts(context);
+        bins.print_bins();
+
+        /* Check that the cohort shift worked */
+        CHECK(bins.n_bins() == INIT_BINS + 1);
+        CHECK(bins.n_elems() == INIT_BINS * 2);
+
+        for (int i = 1; i < bins.n_bins(); i++) {
+            CHECK(bins.get(i).r_total == i * 2);
+        }
+
+        /* Remove everything from its new bin */
+        for (int i = 0; i < INIT_BINS * 2; i++) {
+            bins.remove(context, EntityID(i), (i % 10) + 1);
+        }
+        CHECK(bins.n_elems() == 0);
     }
 }
-
-//SUITE(BinSet) {
-//    struct Watcher {
-//        BinPosition lookup(int elem) {
-//            return elements[elem];
-//        }
-//        void on_set(BinPosition index, int elem) {
-//            elements[elem] = index;
-//        }
-//        map<int, BinPosition> elements;
-//    };
-//    TEST(bins) {
-//        MemPool mem_pool;
-//        mem_pool.allocate(10000);
-//        const int CAPACITY = 1000;
-//        int* data = new int[CAPACITY];
-//
-//        BinSet<int, Watcher> group(data, Watcher(), CAPACITY);
-//        Watcher& w = group.get_controller();
-//
-//        std::vector<int> contents;
-//        for (int i = 1; i < 100; i++) {
-////            printf("ADDING %d\n", i);
-//            group.add(mem_pool, i, i % 10);
-//        }
-//
-//        for (int i = 1; i < 100; i++) {
-////            printf("REMOVING %d\n", i)
-//            BinPosition index = w.lookup(i);
-//            group.remove(index);
-//        }
-//        CHECK(group.n_elems() == 0);
-////        group.print_cats();
-//
-//        delete[] data;
-//    }
-//}
-
-//SUITE(CatGroup) {
-//    TEST(ints) {
-//        MemPool mem_pool;
-//        mem_pool.allocate(10000);
-//        const int CAPACITY = 1000;
-//        int* data = new int[CAPACITY];
-//        CatGroup<int, SimpleIndexer> group(data, SimpleIndexer(), CAPACITY);
-//
-//        std::vector<int> contents;
-//        for (int i = 1; i < 100; i++) {
-////            printf("ADDING %d\n", i);
-//            group.add(mem_pool, i, i % 10);
-//        }
-//
-//        for (int i = 1; i < 100; i++) {
-////            printf("REMOVING %d\n", i);
-//            group.remove(i);
-//        }
-//        CHECK(group.n_elems() == 0);
-////        group.print_cats();
-//
-//        delete[] data;
-//    }
-//    TEST(entityid) {
-//        MemPool mem_pool;
-//        mem_pool.allocate(10000);
-//        const int CAPACITY = 1000;
-//        EntityID* data = new EntityID[CAPACITY];
-//        CatIndex* cat_data = new CatIndex[CAPACITY];
-//        CatEntityIndexer indexer(cat_data, CAPACITY);
-//        CatGroup<EntityID> group(data, indexer, CAPACITY);
-//
-//        std::vector<int> contents;
-//        for (int i = 1; i < 100; i++) {
-//            printf("ADDING %d\n", i);
-//            group.add(mem_pool, EntityID(i), i % 10);
-//        }
-//
-//        for (int i = 1; i < 100; i++) {
-//            printf("REMOVING %d\n", i);
-//            group.remove(EntityID(i));
-//        }
-//        CHECK(group.n_elems() == 0);
-//        group.print_cats();
-//
-//        delete[] cat_data;
-//        delete[] data;
-//    }
-//}
