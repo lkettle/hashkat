@@ -60,6 +60,25 @@ inline std::vector<double> parse_numlist(std::string s) {
 	return ret;
 }
 
+// Generic function for using a vector as a simple memory allocator
+// Takes a vector of any type, and returns a pointer to a memory region
+// of the desired size.
+//
+// WARNING: All vector memory *must* be preallocated with reserve()!
+// Failure to do so will result in a program-terminating failure.
+//
+// Reason: this allocation scheme relies on the fact that a vector
+// will keep a contiguous block of memory as long as there is room
+// in its buffer.
+template <typename T>
+inline T* allocate(std::vector<T>& vec, int block) {
+    int old_size = vec.size();
+    int new_size = old_size + block;
+    ASSERT(new_size < vec.capacity(), "allocate: Not enough reserved memory for requested allocation!");
+    vec.resize(new_size);
+    return &vec[block];
+}
+
 inline double parse_num(std::string s) {
     double ret = 0.0;
     std::stringstream string_converter(s); //** Think of this like 'cin', but instead of standard input its an arbitrary string.

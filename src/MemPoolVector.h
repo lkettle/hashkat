@@ -77,6 +77,7 @@ struct MemPool {
 	void* memory;
 	int used, capacity;
 	DeletedList deletions;
+	std::vector<char> buffer; // General-purpose buffer
 
 	MemPool() {
 		memory = NULL;

@@ -7,6 +7,7 @@ include_directories(
 	dependencies
 	dependencies/yaml-cpp/include
 	dependencies/libuv/include
+        ${SPARSEHASH_INCLUDE_DIR} 
 )
 
 add_definitions(-Wuninitialized -std=c++98 -O0 -ggdb)
@@ -15,11 +16,11 @@ add_definitions(-Wuninitialized -std=c++98 -O0 -ggdb)
 #SET (CMAKE_MODULE_LINKER_FLAGS -fsanitize=address)
 
 # Find source files
-aux_source_directory(
-	"." 
-	networksim_src
-)
 
+file(GLOB networksim_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} 
+	"*.cpp" 
+	"*.h" 
+)
 
 aux_source_directory(
 	"tests" 

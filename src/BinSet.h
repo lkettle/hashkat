@@ -113,6 +113,7 @@ struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
         this->indexer.store(context, index, element);
     }
 
+    // Helper for incrementally managing the rate for a specific element
     template <typename Context>
     double rate_add(Context& context, int bin, const T& element) {
         double delta = indexer.rate(context, bin);
@@ -120,24 +121,28 @@ struct StoreData : public AbstractLayer<T, RateInfo, INIT_BINS> {
         return delta;
     }
 
-    template <typename Context>
+    // Helper for incrementally managing the rate for a specific element
+    template <typename Context>pre
     double rate_subtract(Context& context, int bin, const T& element) {
         double delta = -indexer.rate(context, bin);
         this->get(bin).r_total += delta;
         return delta;
     }
 
-    // Used for time-dependent rates:
+    // Used for time-dependent rates.
+    // Shift every cohort up a bin.
+    // NOTE: Will 'push off' users from the end.
     template <typename Context>
-    void shift_cohorts(Context& context) {
+    void shift_cohorts(Context& context, Range range) {
         printf("Shifting the categories\n");
-        this->add_bin(context);
-        for (int bin = this->n_bins() - 2; bin >= 0; bin--) {
+
+        for (int bin = range.max - 1; bin >= range.min; bin--) {
             Range range = this->index_range(bin);
             int n_elems = (range.max - range.min);
             this->get(bin + 1) = this->get(bin);
             this->get(bin + 1).r_total = n_elems * indexer.rate(context, bin + 1);
         }
+
         this->get(0) = RateInfo();
     }
 
@@ -231,7 +236,7 @@ struct StoreLayer : public StoreT {
             return;
         }
         for (int i = 0; i < this->bounds.size; i++) {
-            std::cout << "Bin " << i << ": " << this->bounds[i].bound << " r_total: " << this->bounds[i].r_total << std::endl;
+            std::cout << "Bin " << i << ": " << this->bounds[i].bound << " r_total: " << this->bounds[i].r_total << '\n';
         }
         int last_bound = this->bounds.back().bound;
         printf("Content: [");
