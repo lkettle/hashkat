@@ -6,8 +6,6 @@
 #include "util.h"
 #include "lcommon/Range.h"
 
-#include "cats/cat_groups.h"
-
 static void finish(uv_work_t *req, int status) {
     // Do nothing
 }

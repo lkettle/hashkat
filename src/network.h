@@ -5,7 +5,6 @@
 
 #include "lcommon/Range.h"
 
-#include "TimeCatGrouper.h"
 #include "MemPoolVector.h"
 
 #include "util.h"
