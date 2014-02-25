@@ -9,10 +9,31 @@ enum FollowModel {
 };
 
 #include <cmath>
+#include <vector>
 #include "network.h"
+
+#include "tweets.h"
+
+// The relevance table for an entity preference class
+// determines how likely they are to act on a given
+// tweet (whether a retweet or not) that they see.
+
+struct DistanceFuncTable {
+    std::vector<TweetRateVec> rates;
+};
+
+struct HumourFuncTable {
+    std::vector<DistanceFuncTable> subtable;
+};
+
+struct EntityTypeFuncTable {
+    std::vector<HumourFuncTable> subtable;
+};
 
 struct EntityPreferenceClass {
     std::string name;
+    // This is created from a Python function in INFILE.py
+    EntityTypeFuncTable relevance_func_table;
 };
 
 // Also referred to as the Omega function, see INFILE.yaml for details:

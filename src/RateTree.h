@@ -1,6 +1,8 @@
 #ifndef RATETREE_H_
 #define RATETREE_H_
 
+#include "util.h"
+
 // 100 bytes / entity overhead
 // Make global choice based on tree
 // Time dependency checked based on thresholds
@@ -14,7 +16,6 @@
 //  - At cost of double the rate storage, can have separate unfollow rates
 //  - Effect is negligible, hard to model
 
-
 template <int N_ELEM>
 struct RateVec {
     double tuple[N_ELEM];
@@ -24,6 +25,10 @@ struct RateVec {
             tuple[i] = v;
         }
         tuple_sum = v * N_ELEM;
+    }
+    double& operator[](int i) {
+        DEBUG_CHECK(i >= 0 && i < N_ELEM, "Out-of-bounds");
+        return tuple[i];
     }
     void print() const {
         printf("(Sum = %.2f)[Elems: ", tuple_sum);

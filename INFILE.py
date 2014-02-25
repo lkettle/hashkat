@@ -47,6 +47,11 @@ humour_bins = tweet_rel["humour_bins"]
 
 pref_classes = tweet_rel["preference_classes"]
 
+# Made available for infile functions
+def step(val, threshold):
+    if val >= threshold: return 1.0
+    return 0.0
+
 def load_relevance_function(content):
     exec('def __TEMP(distance, humour, entity_type): return ' + str(content))
     return __TEMP # A hack
@@ -116,18 +121,27 @@ def make_object(dict):
     obj = Struct(**dict)
     return obj
 
-def relevance_rate_vector(entity_type, humour):
+def relevance_rate_vector(entity_type, humour, distance):
     results = []
     for func_set in profile_funcs:
         f = func_set[entity_type.name]
-        res = f(0, humour, entity_type) # TODO 0 -> distance
+        res = f(distance, humour, entity_type) 
+        results.append(res)
+    return results
+
+def relevance_distance_component(entity_type, humour):
+    results = []
+    width = 1.0 / float(distance_bins)
+    for i in range(distance_bins):
+        res = relevance_rate_vector(entity_type, humour, (i+.5) * width) # Use midpoint
         results.append(res)
     return results
 
 def relevance_humour_component(entity_type):
     results = []
+    width = 1.0 / float(humour_bins)
     for i in range(humour_bins):
-        res = relevance_rate_vector(entity_type, i / float(humour_bins))
+        res = relevance_distance_component(entity_type, (i+.5) * width) # Use midpoint
         results.append(res)
     return results
 

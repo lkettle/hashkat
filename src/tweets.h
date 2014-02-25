@@ -66,14 +66,22 @@ struct TweetRateDeterminer {
     AnalysisState& state;
 };
 
+const int TWEET_DIM = N_BIN_PREFERENCE_CLASS * N_BIN_DISTANCE;
+typedef RateVec<TWEET_DIM> TweetRateVec;
+
 struct TweetBank {
-    TimeDepRateTree<Tweet, 1 /*Just one rate for now*/, TweetRateDeterminer> tree;
+    TimeDepRateTree<Tweet, TWEET_DIM, TweetRateDeterminer> tree;
 
     double get_total_rate() {
         return tree.rate_summary().tuple_sum;
     }
 
     TweetBank(AnalysisState& state);
+
+
+    void add(const Tweet& tweet, const TweetRateVec& rates) {
+        tree.add(tweet, rates);
+    }
 
     int n_active_tweets() const {
         return tree.size();

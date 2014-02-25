@@ -239,19 +239,40 @@ struct Analyzer {
         ti->id_original_author = id_original_author;
         ti->time_of_tweet = time;
         // TODO: Pick
-        ti->language = e_original_author.language; // TODO: AD -- Bilingual tweets make no sense
+        ti->language = e_original_author.language;
+        if (ti->language == LANG_FRENCH_AND_ENGLISH) {
+            ti->language = LANG_FRENCH;
+        } else {
+            ti->language = LANG_ENGLISH;
+        }
         return ti;
     }
 
+    TweetRateVec calc_tweet_rate_vec(FollowerSet& follower_set) {
+        TweetRateVec rate_vec;
+        int i = 0;
+        /* Calculate a sum over the */
+        for (int pc = 0; pc < N_BIN_PREFERENCE_CLASS; pc++) {
+            EntityPreferenceClass& epc = config.pref_classes[pc].relevance_func_table;
+            follower_set[]
+
+            for (int d = 0; d < N_BIN_DISTANCE; d++) {
+
+                rate_vec = calculate_tweet_rate
+                i++;
+            }
+        }
+        return rate_vec;
+    }
     Tweet generate_tweet(int id_tweeter, const smartptr<TweetContent>& content) {
         Entity& e_tweeter = network[id_tweeter];
         Tweet tweet;
         tweet.content = content;
         tweet.creation_time = time;
         tweet.id_tweeter = id_tweeter;
-        if (network.n_followers(id_tweeter) != 0) {
-            RateVec<1> rate_vec(0.0001 * network.n_followers(id_tweeter));
-            state.tweet_bank.tree.add(tweet, rate_vec);
+        FollowerSet& follower_set = e_tweeter.follower_set;
+        if (follower_set.size() > 0) {
+            state.tweet_bank.add(tweet, calc_tweet_rate_vec(follower_set));
         }
         return tweet;
     }

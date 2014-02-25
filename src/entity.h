@@ -31,7 +31,7 @@ namespace follower_set {
         AnalysisState& N; // Analysis state
         int owner_id; // Owner of the follower set
     };
-    struct PreferenceClassComponent: cats::StaticLeafClass<int, N_BIN_PREFERENCE_CLASS> {
+    struct LanguageComponent: cats::StaticLeafClass<int, N_BIN_PREFERENCE_CLASS> {
         int classify(Context& N, int entity_id); // Defined in entity.cpp
         std::string cat_name(Context& N, int bin);
         template <typename AnyT>
@@ -44,7 +44,7 @@ namespace follower_set {
         std::string cat_name(Context& N, int bin);
         int classify(Context& N, int entity_id); // Defined in entity.cpp
     };
-    struct LanguageComponent: cats::StaticTreeClass<DistanceComponent, N_LANGS> {
+    struct PreferenceClassComponent: cats::StaticTreeClass<DistanceComponent, N_LANGS> {
         std::string cat_name(Context& N, int bin);
         int classify(Context& N, int entity_id); // Defined in entity.cpp
     };
