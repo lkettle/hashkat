@@ -40,7 +40,7 @@ namespace follower_set {
         }
     };
     // The distance you are to your followers is a categorization dimension
-    struct DistanceComponent: cats::StaticTreeClass<PreferenceClassComponent, N_BIN_DISTANCE> {
+    struct DistanceComponent: cats::StaticTreeClass<LanguageComponent, N_BIN_DISTANCE> {
         std::string cat_name(Context& N, int bin);
         int classify(Context& N, int entity_id); // Defined in entity.cpp
     };

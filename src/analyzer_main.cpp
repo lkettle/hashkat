@@ -12,6 +12,7 @@
 #include "util.h"
 #include "network.h"
 #include "entity.h"
+#include "tweets.h"
 
 #include "config_static.h"
 
@@ -253,12 +254,13 @@ struct Analyzer {
         int i = 0;
         /* Calculate a sum over the */
         for (int pc = 0; pc < N_BIN_PREFERENCE_CLASS; pc++) {
-            EntityPreferenceClass& epc = config.pref_classes[pc].relevance_func_table;
-            follower_set[]
+            EntityPreferenceClass& epc = config.pref_classes[pc];
+            EntityTypeFuncTable& funcs = epc.relevance_func_table;
+//            follower_set[]
 
             for (int d = 0; d < N_BIN_DISTANCE; d++) {
 
-                rate_vec = calculate_tweet_rate
+//                rate_vec = calculate_tweet_rate()
                 i++;
             }
         }
