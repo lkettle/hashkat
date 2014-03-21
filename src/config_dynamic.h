@@ -73,8 +73,6 @@ struct ParsedConfig {
     bool stage1_unfollow;
     FollowModel follow_model;
 
-    FollowerSetRatesDeterminer follower_rates;
-
     bool save_network_on_timeout;
     std::string save_file;
 
@@ -103,13 +101,26 @@ struct ParsedConfig {
 
     std::vector<EntityPreferenceClass> pref_classes;
 
+
     bool enable_interactive_mode;
 
     // command-line config options
     bool handle_ctrlc;
 
-    // Tweet relevance functions
+    // tweet_obs: 
+    //  An observation probability density function that gives 
+    //  the probability that a tweet is observed at a certain time by an 'ideal observer'. 
+    //  An 'ideal observer' is one which always sees a tweet, eventually.'
+    //  The observation PDF is used for both retweeting and follow-from-tweet.
+    //  We combine this with a relevance factor, r, where 0 <= r <= 1.0, we in turn
+    //  determines the probability that a given entity will act on a given tweet, with enough time.
     TweetObservationPDF tweet_obs;
+
+    // follower_rates: 
+    //  The transmission probability for a person of a certain preference class towards
+    //  a tweet of a given origin & content.
+
+    FollowerSetRatesDeterminer follower_rates;
 
     /* Most config values are optional -- place defaults here. */
     ParsedConfig() {
